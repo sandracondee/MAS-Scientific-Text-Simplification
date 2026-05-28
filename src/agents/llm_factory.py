@@ -110,7 +110,7 @@ def build_chat_llm(temperature: float = 0.0, model: Optional[str] = None, provid
             ) from exc
 
         _validate_api_key("Gemini", "GOOGLE_API_KEY")
-        model_name = model or os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
+        model_name = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
         return ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
 
     if resolved_provider == "groq":
@@ -124,7 +124,7 @@ def build_chat_llm(temperature: float = 0.0, model: Optional[str] = None, provid
             ) from exc
 
         _validate_api_key("Groq", "GROQ_API_KEY")
-        model_name = model or os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
+        model_name = model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
         return ChatGroq(model=model_name, temperature=temperature)
 
     if resolved_provider == "mistral":
@@ -138,27 +138,47 @@ def build_chat_llm(temperature: float = 0.0, model: Optional[str] = None, provid
             ) from exc
 
         _validate_api_key("Mistral", "MISTRAL_API_KEY")
-        model_name = model or os.getenv("MISTRAL_MODEL", "mistral-large-latest")
+        model_name = model or os.getenv("MISTRAL_MODEL", "mistral-small-2603")
         return ChatMistralAI(model=model_name, temperature=temperature)
 
+    # if resolved_provider == "deepseek":
+    #     try:
+    #         openai_module = importlib.import_module("langchain_openai")
+    #         ChatOpenAI = getattr(openai_module, "ChatOpenAI")
+    #     except ImportError as exc:
+    #         raise ImportError(
+    #             "`langchain-openai` is required for Deepseek mode. "
+    #             "Install it with: pip install langchain-openai"
+    #         ) from exc
+
+    #     model_name = model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    #     api_key = _validate_api_key("Deepseek", "DEEPSEEK_API_KEY")
+        
+    #     return ChatOpenAI(
+    #         model=model_name,
+    #         temperature=temperature,
+    #         api_key=api_key,
+    #         base_url="https://api.deepseek.com",
+    #     )
+    
     if resolved_provider == "deepseek":
         try:
-            openai_module = importlib.import_module("langchain_openai")
-            ChatOpenAI = getattr(openai_module, "ChatOpenAI")
+            deepseek_module = importlib.import_module("langchain_deepseek")
+            ChatDeepSeek = getattr(deepseek_module, "ChatDeepSeek")
         except ImportError as exc:
             raise ImportError(
-                "`langchain-openai` is required for Deepseek mode. "
-                "Install it with: pip install langchain-openai"
+                "`langchain-deepseek` is required. "
+                "Install it with: pip install langchain-deepseek"
             ) from exc
 
-        model_name = model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+        model_name = model or os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
         api_key = _validate_api_key("Deepseek", "DEEPSEEK_API_KEY")
         
-        return ChatOpenAI(
+        return ChatDeepSeek(
             model=model_name,
             temperature=temperature,
-            api_key=api_key,
-            base_url="https://api.deepseek.com",
+            api_key=api_key
+            # No necesitas base_url, el paquete oficial ya la conoce
         )
 
     raise ValueError(

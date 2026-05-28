@@ -129,10 +129,11 @@ def node_parallel_drafters(state: dict) -> dict:
             try:
                 drafts[letter] = future.result().strip()
             except Exception as exc:
-                drafts[letter] = (
-                    f"Draft generation failed for {letter}. "
-                    f"Provider '{drafter_providers[letter]}' Model '{drafter_models[letter]}' error: {exc}"
-                )
+                raise exc
+                # drafts[letter] = (
+                #     f"Draft generation failed for {letter}. "
+                #     f"Provider '{drafter_providers[letter]}' Model '{drafter_models[letter]}' error: {exc}"
+                # )
 
     pause_step_sync()
     return {"drafts": drafts}

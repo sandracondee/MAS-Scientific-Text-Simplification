@@ -25,4 +25,5 @@ dependencies = [
     "langchain>=1.2.17",
     "streamlit>=1.41.0",
     "torchvision>=0.18.0",
+    "langchain-deepseek>=1.0.1",
 ]

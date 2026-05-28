@@ -46,11 +46,17 @@ async def main():
         }
         
         working_state = dict(initial_state)
-        async for output in app.astream(initial_state):
-            for node_name, updates in output.items():
-                working_state.update(updates)
-                print(f"-> Node {node_name} finished")
-                
+        
+        try:
+            async for output in app.astream(initial_state):
+                for node_name, updates in output.items():
+                    working_state.update(updates)
+                    print(f"-> Node {node_name} finished")
+        except Exception as e:
+            print(f"\nError durante la simplificación del texto {item.get('pair_id')}: {str(e)}")
+            print("Deteniendo el proceso. El progreso hasta el paso anterior ha sido guardado.")
+            break
+            
         simplified_text = working_state.get("current_simplified_text", "")
         
         print("\n[ FINAL PLAIN LANGUAGE SUMMARY ]")

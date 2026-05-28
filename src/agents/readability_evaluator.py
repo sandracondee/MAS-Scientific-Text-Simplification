@@ -125,9 +125,10 @@ async def node_readability_evaluator(state: dict) -> dict:
     
     except Exception as e:
         print(f"Error in readability evaluator: {e}")
-        await pause_step_async()
-        return {
-            "readability_evaluator_feedback": f"Error during evaluation: {str(e)}",
-            "is_readability_approved": False, 
-            "current_metrics": {}
-        }
+        raise e
+        # await pause_step_async()
+        # return {
+        #     "readability_evaluator_feedback": f"Error during evaluation: {str(e)}",
+        #     "is_readability_approved": False, 
+        #     "current_metrics": {}
+        # }
