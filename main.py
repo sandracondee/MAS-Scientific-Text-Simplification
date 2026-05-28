@@ -20,9 +20,22 @@ async def main():
         dataset = json.load(f)
         
     results = []
+    if os.path.exists(output_file):
+        with open(output_file, "r", encoding="utf-8") as f:
+            try:
+                results = json.load(f)
+            except json.JSONDecodeError:
+                results = []
+                
+    processed_ids = {item.get("pair_id") for item in results if "pair_id" in item}
     
     for i, item in enumerate(dataset):
-        print(f"\n[{i+1}/{len(dataset)}] Processing {item.get('pair_id', 'Unknown ID')}...")
+        pair_id = item.get('pair_id', 'Unknown ID')
+        if pair_id in processed_ids:
+            # print(f"[{i+1}/{len(dataset)}] Skipping {pair_id} (already processed)")
+            continue
+            
+        print(f"\n[{i+1}/{len(dataset)}] Processing {pair_id}...")
         
         complex_text = item.get("complex", "")
         
