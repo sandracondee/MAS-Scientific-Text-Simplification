@@ -4,7 +4,7 @@ import asyncio
 import time
 
 
-STEP_DELAY_SECONDS = 0
+STEP_DELAY_SECONDS = 0.5
 
 
 def pause_step_sync(seconds: float = STEP_DELAY_SECONDS) -> None:

@@ -42,12 +42,14 @@ def router_logic(state: GraphState) -> str:
     readability_ok = state.get("is_readability_approved", False)
     approved = fact_ok and readability_ok
 
-    if approved:
-        return "term_explainer"
+    finish_node = "end" if state.get("skip_term_explainer", False) else "term_explainer"
 
-    if state["iteration_count"] >= MAX_ITER:
+    if approved:
+        return finish_node
+
+    if state.get("iteration_count", 0) >= MAX_ITER:
         print(f"-> MAX ITERATIONS REACHED ({MAX_ITER}). Workflow finished.")
-        return "term_explainer"
+        return finish_node
 
     print("-> AUDIT REJECTED. Routing to editor for correction.")
     return "editor"
@@ -95,6 +97,7 @@ def build_graph():
         {
             "editor": "editor",
             "term_explainer": "term_explainer",
+            "end": END,
         }
     )
 

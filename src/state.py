@@ -19,3 +19,5 @@ class GraphState(TypedDict):
     is_readability_approved: bool
     is_approved: bool
     term_explanations: Dict[str, Dict[str, str]]
+    skip_term_explainer: bool
+    skip_guardrail: bool

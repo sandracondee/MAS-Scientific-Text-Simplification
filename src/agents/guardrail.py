@@ -12,6 +12,15 @@ class GuardrailResult(BaseModel):
     )
 
 def node_guardrail(state: dict) -> dict:
+    if state.get("skip_guardrail", False):
+        print("-> Guardrail Agent: Skipped by configuration")
+        return {
+            "guardrail_triggered": False,
+            "is_input_in_scope": True,
+            "guardrail_message": "Skipped",
+            "guardrail_rationale": "Guardrail evaluation was skipped."
+        }
+
     llm = build_chat_llm(
         temperature=0.0,
         model=os.getenv("GUARDRAIL_MODEL") or None,
