@@ -87,7 +87,7 @@ async def main():
             json.dump(results, f, indent=4, ensure_ascii=False)
             
         print(f"\n-> Sleeping for 5 seconds to respect API limits...")
-        await asyncio.sleep(5)
+        await asyncio.sleep(1)
 
     print("\n" + "==="*25)
     print("WORKFLOW FINISHED FOR ALL TEXTS")
