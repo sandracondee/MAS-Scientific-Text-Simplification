@@ -6,6 +6,56 @@ from pydantic import BaseModel, Field
 from src.agents.llm_factory import build_chat_llm
 from src.agents.step_delay import pause_step_sync
 
+import json, re
+from collections import defaultdict
+from rapidfuzz import process, fuzz
+
+# Cargado una vez al importar el módulo
+with open("pl_medical_dictionary/pl_medical_dictionary_processed.json", "r", encoding="utf-8") as f:
+    _MEDICAL_DICT = json.load(f)
+
+_KEYS_BY_LEN = defaultdict(list)
+for _k in _MEDICAL_DICT:
+    if " " not in _k:
+        _KEYS_BY_LEN[len(_k)].append(_k)
+
+
+def _attach_glossary(text: str, fuzzy_threshold: int = 92, max_definitions: int = 15) -> str:
+    tokens = {w for w in re.findall(r"\b[a-z]+\b", text.lower()) if len(w) >= 4}
+
+    exact = {t: _MEDICAL_DICT[t] for t in tokens if t in _MEDICAL_DICT}
+
+    fuzzy_hits = []
+    for word in tokens - set(exact):
+        wl = len(word)
+        candidates = [k for d in range(-2, 3) for k in _KEYS_BY_LEN[wl + d]]
+        if not candidates:
+            continue
+        hit = process.extractOne(word, candidates, scorer=fuzz.WRatio)
+        if hit:
+            key, score, _ = hit
+            if score >= fuzzy_threshold and key not in exact:
+                fuzzy_hits.append((key, score))
+
+    fuzzy_hits.sort(key=lambda x: x[1], reverse=True)
+    slots = max_definitions - len(exact)
+    fuzzy = {key: _MEDICAL_DICT[key] for key, _ in fuzzy_hits[:slots]}
+
+    definitions = {**exact, **fuzzy}
+    if not definitions:
+        return text
+
+    glossary = (
+        "The following glossary provides plain-language definitions for "
+        "medical terms found in the text. Use them as a reference to ensure "
+        "your simplification conveys each concept clearly and accurately in "
+        "Plain Language.\n\nGLOSSARY:\n"
+        + "\n".join(f"- {k}: {v}" for k, v in definitions.items())
+        + "\n\nBIOMEDICAL ABSTRACT TO SIMPLIFY:\n"
+    )
+    return glossary + text
+
+
 class SimplificationResult(BaseModel):
     current_simplified_text: str = Field(
         description="The Plain Language simplification, ensuring it is accessible for a general audience."
@@ -19,22 +69,52 @@ def _generate_single_draft(complex_text: str, model_name: str, provider: str) ->
     else: # Deepseek does not support structured output yet, so we will rely on the system prompt to enforce the output format
         simplifier_agent = llm
 
-    system_prompt = ("You are an expert medical writer specialized in adapting biomedical abstracts into Plain Language for lay readers.\n"
-                    "Your task is to simplify the following text for a general audience.\n"
-                    "Keep the core medical facts intact, but replace or explain complex medical jargon using everyday language.\n"
-                    "Ensure that all numbers, results, and facts remain exactly the same.\n"
-                    "Do not paraphrase numerical data or alter the meaning of findings.\n"
-                    "IMPORTANT: Do not add an extra title, just answer with the simplified text.")    
+        system_prompt = """You are an expert medical writer specialized in adapting biomedical abstracts into Plain Language for lay readers.
+Your task is to simplify the following text while strictly adhering to these professional plain-language standards:
+
+1. Language & Vocabulary: 
+    - Use everyday language (e.g., 'people' instead of 'participants').
+    - Replace research jargon: use 'study' instead of 'trial', 'people with [condition]', 'women', 'children', etc. instead of 'participants' and use specific names for interventions, controls, and outcomes rather than the abstract categories ('intervention', 'control', 'comparison', 'outcome').
+    - Use 'medicines' instead of 'drugs' and 'important' instead of 'significant'. 
+    - Explain common medical words like 'acute' and 'chronic' if used.
+    - If a technical medical term is essential, provide the plain language version first, followed by the technical term in brackets (e.g., 'blood thinners (anticoagulants)').
+    - Explain acronyms and abbreviations (e.g., 'nicotine replacement therapy (NRT)' or use 'for example', 'such as', 'and so on' instead of 'e.g.', 'i.e.', 'etc').
+    - Avoid regional terms (e.g., use 'hospital emergency care' instead of 'Accident & Emergency (A&E)' (UK) or 'Emergency Room (ER)' (USA)).
+
+2. Style & Tone:
+    - Keep sentences short (average 20 words) and vary their length.
+    - Use the active voice (e.g., "We compared" instead of "The results were compared").
+    - Use pronouns (e.g., 'we' for the researchers and 'you' to address the reader).
+    - Use direct verbs (e.g., "investigated" instead of "conducted an investigation", "analyzed" instead of "carried out an analysis").
+    - Write numbers as numerals (1, 2, 3) unless starting a sentence.
+    - Be concise: replace 'wordy' phrases (e.g., use 'during' instead of 'during the course of', 'often' instead of 'it was often the case that', 'some' instead of 'a number of', 'because' instead of 'due to the fact that').
+
+3. Structure:
+    - Use question-based subheadings to organize the content (e.g., "What is a cataract?", "How are cataracts treated?", "What did we find?").
+    - Use bullet points (using dashes '-') for lists.
+    - Start a new paragraph when the topic of a sentence does not directly follow from the sentence before it.
+    - Leave plenty of white space between short paragraphs.
     
+4. Constraints:
+    - Keep the core medical facts intact.
+    - Ensure all numbers and findings remain 100% accurate; do not paraphrase numerical data.
+    - Do not add an extra title. Output only the simplification."""
+
+    enriched_text = _attach_glossary(complex_text)
+
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
-        ("human", "Simplify the following biomedical abstract: {complex_text}")
+        ("human", "{complex_text}")
     ])
 
-    chain = prompt | simplifier_agent
-    result = chain.invoke({"complex_text": complex_text})
-    return result.current_simplified_text if provider != "deepseek" else result.content.strip()
+    print(system_prompt + "\n")
+    print(enriched_text)
 
+    raise NotImplementedError("This function is meant to be run in parallel for each drafter, not as a single chain. The prompt is printed here for debugging purposes, but the actual invocation happens in the node_parallel_drafters function where multiple drafts are generated concurrently.")
+
+    chain = prompt | simplifier_agent
+    result = chain.invoke({"complex_text": enriched_text})
+    return result.current_simplified_text if provider != "deepseek" else result.content.strip()
 
 def _resolve_provider() -> str:
     provider = os.getenv("LLM_PROVIDER", "").strip().lower()

@@ -1,4 +1,4 @@
-import re
+import json
 import os
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
@@ -13,9 +13,7 @@ class JudgeResult(BaseModel):
 def node_judge(state: dict) -> dict:
 
     drafts = state.get("drafts", {})
-
-    llm = build_chat_llm(temperature=0.1, model=os.getenv("JUDGE_MODEL") or None, provider=os.getenv("JUDGE_PROVIDER") or None)
-    judge_agent = llm.with_structured_output(JudgeResult)
+    provider = os.getenv("JUDGE_PROVIDER") or None
 
     system_prompt_judge = (
         "You are an expert Style Judge specialized in Medical Plain Language. "
@@ -46,27 +44,62 @@ def node_judge(state: dict) -> dict:
         "Evaluate the options and return the rationale and the winning letter."
     )
 
-    prompt_judge = ChatPromptTemplate.from_messages([
-        ("system", system_prompt_judge),
-        ("human", human_prompt_judge)
-    ])
+    llm = build_chat_llm(temperature=0.1, model=os.getenv("JUDGE_MODEL") or None, provider=provider)
 
-    chain = prompt_judge | judge_agent
-    result = chain.invoke(
-        {
+    if provider != "deepseek":
+        judge_agent = llm.with_structured_output(JudgeResult)
+        prompt_judge = ChatPromptTemplate.from_messages([
+            ("system", system_prompt_judge),
+            ("human", human_prompt_judge)
+        ])
+        chain = prompt_judge | judge_agent
+        result = chain.invoke({
             "draft_A": drafts.get("A", ""),
             "draft_B": drafts.get("B", ""),
             "draft_C": drafts.get("C", ""),
             "draft_D": drafts.get("D", ""),
-        }
-    )
+        })
+        winner_letter = result.winner
+        rationale = result.rationale
 
-    winner_letter = result.winner
-    rationale = result.rationale
+    else:
+        from openai import OpenAI
+
+        system_prompt_judge_deepseek = system_prompt_judge + (
+            '\n\nYou must respond ONLY with a JSON object in this exact format, no extra text:\n'
+            '{\n'
+            '  "rationale": "your step-by-step analysis here",\n'
+            '  "winner": "A"\n'
+            '}'
+        )
+
+        client = OpenAI(
+            api_key=os.getenv("DEEPSEEK_API_KEY"),
+            base_url="https://api.deepseek.com",
+        )
+        response = client.chat.completions.create(
+            model=os.getenv("JUDGE_MODEL"),
+            temperature=0.1,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system_prompt_judge_deepseek},
+                {"role": "user", "content": human_prompt_judge.format(
+                    draft_A=drafts.get("A", ""),
+                    draft_B=drafts.get("B", ""),
+                    draft_C=drafts.get("C", ""),
+                    draft_D=drafts.get("D", ""),
+                )},
+            ],
+        )
+        parsed = json.loads(response.choices[0].message.content)
+        winner_letter = parsed["winner"]
+        rationale = parsed["rationale"]
 
     state["judge_rationale"] = rationale
     state["selected_draft_letter"] = winner_letter
     state["current_simplified_text"] = drafts[winner_letter]
+
+    print(f"\nWinner: {winner_letter}")
 
     pause_step_sync()
 
