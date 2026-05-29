@@ -23,7 +23,17 @@ def node_judge(state: dict) -> dict:
     display_to_real = dict(zip(display_labels, real_letters))
     # ────────────────────────────────────────────────────────────────────
 
-    system_prompt_judge = (...)
+    system_prompt_judge = (
+        "You are an expert Style Judge specialized in Medical Plain Language. "
+        "Your task is to evaluate 4 simplified versions (Option A, B, C and D) of a complex biomedical abstract and select the best one.\n\n"
+        "EVALUATION CRITERIA (Focus ONLY on style and readability):\n"
+        "1. Jargon & Vocabulary: Which option best avoids or explains complex medical terms using everyday language?\n"
+        "2. Structure & Flow: Which option uses shorter sentences, active voice and clear formatting to make it easy to digest?\n"
+        "3. Natural Tone: Which option sounds the most natural and accessible for a patient without any medical training?\n\n"
+        "CRITICAL INSTRUCTIONS:\n"
+        "- DO NOT attempt to fact-check the clinical data. Another specialized agent will verify the facts. Assume all options contain the correct data.\n"
+        "- Think step-by-step. Briefly analyze the strengths and weaknesses of each option regarding style."
+    )
 
     human_prompt_judge = (
         "Please evaluate the following 4 options and select the winner based on Plain Language style:\n\n"
