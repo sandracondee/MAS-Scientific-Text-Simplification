@@ -15,17 +15,15 @@ def node_judge(state: dict) -> dict:
     drafts = state.get("drafts", {})
     provider = os.getenv("JUDGE_PROVIDER") or None
 
-    system_prompt_judge = (
-        "You are an expert Style Judge specialized in Medical Plain Language. "
-        "Your task is to evaluate 4 simplified versions (Option A, B, C and D) of a complex biomedical abstract and select the best one.\n\n"
-        "EVALUATION CRITERIA (Focus ONLY on style and readability):\n"
-        "1. Jargon & Vocabulary: Which option best avoids or explains complex medical terms using everyday language?\n"
-        "2. Structure & Flow: Which option uses shorter sentences, active voice and clear formatting to make it easy to digest?\n"
-        "3. Natural Tone: Which option sounds the most natural and accessible for a patient without any medical training?\n\n"
-        "CRITICAL INSTRUCTIONS:\n"
-        "- DO NOT attempt to fact-check the clinical data. Another specialized agent will verify the facts. Assume all options contain the correct data.\n"
-        "- Think step-by-step. Briefly analyze the strengths and weaknesses of each option regarding style."
-    )
+    # ── Aleatorizar orden de presentación para evitar position bias ──────
+    import random
+    real_letters = list(drafts.keys())
+    random.shuffle(real_letters)
+    display_labels = ["A", "B", "C", "D"][:len(real_letters)]
+    display_to_real = dict(zip(display_labels, real_letters))
+    # ────────────────────────────────────────────────────────────────────
+
+    system_prompt_judge = (...)
 
     human_prompt_judge = (
         "Please evaluate the following 4 options and select the winner based on Plain Language style:\n\n"
@@ -54,12 +52,12 @@ def node_judge(state: dict) -> dict:
         ])
         chain = prompt_judge | judge_agent
         result = chain.invoke({
-            "draft_A": drafts.get("A", ""),
-            "draft_B": drafts.get("B", ""),
-            "draft_C": drafts.get("C", ""),
-            "draft_D": drafts.get("D", ""),
+            "draft_A": drafts.get(display_to_real["A"], ""),
+            "draft_B": drafts.get(display_to_real["B"], ""),
+            "draft_C": drafts.get(display_to_real["C"], ""),
+            "draft_D": drafts.get(display_to_real["D"], ""),
         })
-        winner_letter = result.winner
+        winner_display = result.winner
         rationale = result.rationale
 
     else:
@@ -69,7 +67,7 @@ def node_judge(state: dict) -> dict:
             '\n\nYou must respond ONLY with a JSON object in this exact format, no extra text:\n'
             '{\n'
             '  "rationale": "your step-by-step analysis here",\n'
-            '  "winner": "A"\n'
+            '  "winner": "<single letter: A, B, C or D>"\n'
             '}'
         )
 
@@ -81,25 +79,29 @@ def node_judge(state: dict) -> dict:
             model=os.getenv("JUDGE_MODEL"),
             temperature=0.1,
             response_format={"type": "json_object"},
+            extra_body={"thinking": {"type": "disabled"}},
             messages=[
                 {"role": "system", "content": system_prompt_judge_deepseek},
                 {"role": "user", "content": human_prompt_judge.format(
-                    draft_A=drafts.get("A", ""),
-                    draft_B=drafts.get("B", ""),
-                    draft_C=drafts.get("C", ""),
-                    draft_D=drafts.get("D", ""),
+                    draft_A=drafts.get(display_to_real["A"], ""),
+                    draft_B=drafts.get(display_to_real["B"], ""),
+                    draft_C=drafts.get(display_to_real["C"], ""),
+                    draft_D=drafts.get(display_to_real["D"], ""),
                 )},
             ],
         )
         parsed = json.loads(response.choices[0].message.content)
-        winner_letter = parsed["winner"]
+        winner_display = parsed["winner"]
         rationale = parsed["rationale"]
+
+    # ── Revertir display label -> letra real del draft ───────────────────
+    winner_letter = display_to_real[winner_display]
+    print(f"Winner display: {winner_display} -> real draft: {winner_letter}")
+    # ────────────────────────────────────────────────────────────────────
 
     state["judge_rationale"] = rationale
     state["selected_draft_letter"] = winner_letter
     state["current_simplified_text"] = drafts[winner_letter]
-
-    print(f"\nWinner: {winner_letter}")
 
     pause_step_sync()
 

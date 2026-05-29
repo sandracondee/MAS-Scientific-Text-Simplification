@@ -10,6 +10,9 @@ import json, re
 from collections import defaultdict
 from rapidfuzz import process, fuzz
 
+import warnings
+warnings.filterwarnings("ignore", message="WARNING! thinking is not default parameter")
+
 # Cargado una vez al importar el módulo
 with open("pl_medical_dictionary/pl_medical_dictionary_processed.json", "r", encoding="utf-8") as f:
     _MEDICAL_DICT = json.load(f)
@@ -62,14 +65,7 @@ class SimplificationResult(BaseModel):
     )
 
 def _generate_single_draft(complex_text: str, model_name: str, provider: str) -> str:
-    llm = build_chat_llm(temperature=0.4, model=model_name, provider=provider)
-    if provider != "deepseek":
-        simplifier_agent = llm.with_structured_output(SimplificationResult)
-
-    else: # Deepseek does not support structured output yet, so we will rely on the system prompt to enforce the output format
-        simplifier_agent = llm
-
-        system_prompt = """You are an expert medical writer specialized in adapting biomedical abstracts into Plain Language for lay readers.
+    system_prompt = """You are an expert medical writer specialized in adapting biomedical abstracts into Plain Language for lay readers.
 Your task is to simplify the following text while strictly adhering to these professional plain-language standards:
 
 1. Language & Vocabulary: 
@@ -102,19 +98,62 @@ Your task is to simplify the following text while strictly adhering to these pro
 
     enriched_text = _attach_glossary(complex_text)
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{complex_text}")
-    ])
+    PROVIDERS_WITHOUT_STRUCTURED_OUTPUT = {"deepseek", "groq"}
 
-    print(system_prompt + "\n")
-    print(enriched_text)
+    if provider not in PROVIDERS_WITHOUT_STRUCTURED_OUTPUT:
+        llm = build_chat_llm(temperature=0.4, model=model_name, provider=provider)
+        simplifier_agent = llm.with_structured_output(SimplificationResult)
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "{complex_text}")
+        ])
+        chain = prompt | simplifier_agent
+        result = chain.invoke({"complex_text": enriched_text})
+        return result.current_simplified_text
 
-    raise NotImplementedError("This function is meant to be run in parallel for each drafter, not as a single chain. The prompt is printed here for debugging purposes, but the actual invocation happens in the node_parallel_drafters function where multiple drafts are generated concurrently.")
+    else:
+        from openai import OpenAI
 
-    chain = prompt | simplifier_agent
-    result = chain.invoke({"complex_text": enriched_text})
-    return result.current_simplified_text if provider != "deepseek" else result.content.strip()
+        system_prompt_native = system_prompt + (
+            '\n\nYou must respond ONLY with a JSON object in this exact format, no extra text:\n'
+            '{\n'
+            '  "current_simplified_text": "your full simplification here"\n'
+            '}'
+        )
+
+        provider_configs = {
+            "deepseek": {
+                "api_key": os.getenv("DEEPSEEK_API_KEY"),
+                "base_url": "https://api.deepseek.com",
+                "extra_body": {"thinking": {"type": "disabled"}},
+            },
+            "groq": {
+                "api_key": os.getenv("GROQ_API_KEY"),
+                "base_url": "https://api.groq.com/openai/v1",
+                "extra_body": {},
+            },
+        }
+
+        config = provider_configs[provider]
+        client = OpenAI(api_key=config["api_key"], base_url=config["base_url"])
+        for attempt in range(3):
+            try:
+                response = client.chat.completions.create(
+                    model=model_name,
+                    temperature=max(0.1, 0.4 - attempt * 0.15),  # 0.4 → 0.25 → 0.1
+                    response_format={"type": "json_object"},
+                    extra_body=config["extra_body"] or None,
+                    messages=[
+                        {"role": "system", "content": system_prompt_native},
+                        {"role": "user", "content": enriched_text},
+                    ],
+                )
+                parsed = json.loads(response.choices[0].message.content)
+                return parsed["current_simplified_text"]
+            except Exception as e:
+                print(f"DEBUG attempt {attempt + 1} failed for provider={provider}: {e}")
+                if attempt == 2:
+                    raise e
 
 def _resolve_provider() -> str:
     provider = os.getenv("LLM_PROVIDER", "").strip().lower()
