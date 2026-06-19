@@ -1,4 +1,4 @@
-# Text Simplification ISC
+# Sistema Multi-agente para la Simplificación de Textos Científicos
 
 Sistema multi-agente inteligente para simplificar documentos médicos complejos manteniendo precisión clínica y mejorando la legibilidad. Utiliza agentes LLM especializados organizados en un flujo de trabajo Draft-Select-Audit-Edit que garantiza la calidad de simplificaciones mediante validación de hechos y métricas de legibilidad.
 
