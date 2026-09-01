@@ -66,17 +66,9 @@ async def node_term_explainer(state: dict) -> dict:
         messages = prompt_term_explainer.format_messages(
             current_simplified_text=state["current_simplified_text"]
         )
-        
-        # response = await agent.ainvoke({"messages": messages})
-        
-        # result: TermExplanainerResult = response["structured_response"]
 
         response = await agent.ainvoke({"messages": messages})
         final_text = response["messages"][-1].content
-        print("RAW FINAL TEXT:", repr(final_text))
-
-        for m in response["messages"]:
-            print(type(m).__name__, getattr(m, "tool_calls", None))
 
         import json
         try:
