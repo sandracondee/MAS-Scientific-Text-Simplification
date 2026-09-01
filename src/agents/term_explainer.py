@@ -21,6 +21,7 @@ class TermExplanainerResult(BaseModel):
 
 async def node_term_explainer(state: dict) -> dict:
 
+    print("term explainer")
     try:
         mcp_tools = await mcp_manager.get_tools_for_agent(["search_server"])
         
@@ -29,11 +30,10 @@ async def node_term_explainer(state: dict) -> dict:
                              provider=os.getenv("TERM_EXPLAINER_PROVIDER") or None)
 
         agent = create_agent(
-            model=llm, 
-            tools=mcp_tools, 
-            response_format=TermExplanainerResult
+            model=llm,
+            tools=mcp_tools
         )
-
+        
         system_prompt_term_explainer = (
             "You are an expert Medical Term Explainer. "
             "Your task is to identify between 3 and 10 complex medical terms in a simplified text and extract their definitions from our local dictionary.\n\n"
@@ -44,6 +44,9 @@ async def node_term_explainer(state: dict) -> dict:
             "4. Fill the 'searched_term' with the word you found in the text, the 'dictionary_term' with the word matched by the tool, and the 'explanation' with the text provided by the tool.\n"
             "5. CRITICAL: DO NOT invent, rewrite or summarize the explanation. You must copy the explanation EXACTLY as the tool returns it.\n"
             "6. If the tool returns 'Term not found', DO NOT guess. Discard that word and search for another one."
+            "7. Once you have gathered all explanations, respond ONLY with a valid JSON object matching this exact schema, "
+            "with no markdown fences, no preamble, and no extra text:\n"
+            '{{"explanations": [{{"searched_term": "...", "dictionary_term": "...", "explanation": "..."}}, {{"searched_term": "...", "dictionary_term": "...", "explanation": "..."}}]}}'
         )
 
         human_prompt_term_explainer = (
@@ -64,9 +67,25 @@ async def node_term_explainer(state: dict) -> dict:
             current_simplified_text=state["current_simplified_text"]
         )
         
-        response = await agent.ainvoke({"messages": messages})
+        # response = await agent.ainvoke({"messages": messages})
         
-        result: TermExplanainerResult = response["structured_response"]
+        # result: TermExplanainerResult = response["structured_response"]
+
+        response = await agent.ainvoke({"messages": messages})
+        final_text = response["messages"][-1].content
+        print("RAW FINAL TEXT:", repr(final_text))
+
+        for m in response["messages"]:
+            print(type(m).__name__, getattr(m, "tool_calls", None))
+
+        import json
+        try:
+            result = TermExplanainerResult.model_validate_json(final_text)
+        except Exception:
+            # fallback: a veces el modelo mete texto extra pese a la instrucción
+            import re
+            match = re.search(r"\{.*\}", final_text, re.DOTALL)
+            result = TermExplanainerResult.model_validate_json(match.group(0))
 
         term_explanations_dict = {}
         for item in result.explanations:
