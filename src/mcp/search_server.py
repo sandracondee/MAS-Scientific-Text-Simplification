@@ -1,11 +1,15 @@
+import os
 import json
 import difflib
+from pathlib import Path
 from fastmcp import FastMCP
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 medical_dict = {}
 
 try:
-    with open("pl_medical_dictionary/pl_medical_dictionary.json", "r", encoding="utf-8") as f:
+    with open(_PROJECT_ROOT / "pl_medical_dictionary" / "pl_medical_dictionary.json", "r", encoding="utf-8") as f:
         raw_data = json.load(f)
         definitions_list = raw_data.get("definitions", [])
         
@@ -54,4 +58,6 @@ def lookup_medical_term(term: str) -> str:
     return "Term not found in the dictionary."
 
 if __name__ == "__main__":
-    mcp.run(transport="http", host="127.0.0.1", port=8021)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("MCP_SEARCH_PORT", os.getenv("PORT", "8021")))
+    mcp.run(transport="http", host=host, port=port)

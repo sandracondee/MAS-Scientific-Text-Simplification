@@ -10,7 +10,6 @@ from langchain_core.tools import tool
 class MetricsData(BaseModel):
     SARI: float = Field(description="The SARI score.")
     BLEU: float = Field(description="The BLEU score.")
-    BERTScore: float = Field(description="The BERTScore F1 score.")
     FKGL: float = Field(description="The FKGL score.")
 
 class ReadabilityResultWithMetrics(BaseModel):
@@ -39,7 +38,7 @@ async def node_readability_evaluator(state: dict) -> dict:
             @tool
             async def calculate_metrics_for_current_draft() -> dict:
                 """
-                Call this tool to calculate objective metrics: SARI, BLEU, BERTScore and FKGL.
+                Call this tool to calculate objective metrics: SARI, BLEU, and FKGL.
                 You do NOT need to provide the text arguments, the system will inject them automatically.
                 """
                 return await mcp_metrics_tool.ainvoke({
@@ -58,7 +57,7 @@ async def node_readability_evaluator(state: dict) -> dict:
                 "You are an expert Readability Evaluator for Medical Plain Language. "
                 "Your task is to assess whether a simplified medical text is accessible and easy to understand for the general public without medical training.\n\n"
                 "INSTRUCTIONS:\n"
-                "1. Tool Usage: You MUST use the readability tools provided to you to calculate objective metrics: SARI, BLEU, BERTScore, and FKGL.\n"
+                "1. Tool Usage: You MUST use the readability tools provided to you to calculate objective metrics: SARI, BLEU, and FKGL.\n"
                 "2. SARI IS THE ONLY METRIC THAT MATTERS: The ONLY quantitative threshold you must enforce is SARI. If the SARI score is lower than 35, you MUST fail the text automatically.\n"
                 "3. Qualitative Assessment: Regardless of the SARI score, read the text yourself. Is it genuinely understandable for a layperson? Does it sound natural? If it is confusing, highly academic, or robotic, you must fail it.\n"
                 "4. Verdict: Based ONLY on the SARI threshold (>35) and your qualitative assessment, decide if the text passes. If it fails, set 'is_readability_approved' to False and write clear, actionable instructions in 'feedback' (e.g., 'SARI is below 35, simplify vocabulary', or 'Text sounds too academic, use everyday language').\n"

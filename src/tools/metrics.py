@@ -1,19 +1,23 @@
-import evaluate
-import textstat
-import numpy as np
-
 class MetricsEvaluator:
 
     def __init__(self):
-        print("Loading evaluation metrics: SARI, BLEU and BERTScore F1.")
+        # Imports perezosos: evaluate y textstat son pesados y descargan
+        # modelos. Se cargan solo la primera vez que se instancia, no al
+        # importar el módulo, para que el arranque del contenedor en Render
+        # sea ligero (plan free, 512 MB).
+        import evaluate
+        import textstat
+
+        self._textstat = textstat
+
+        print("Loading evaluation metrics: SARI, BLEU and FKGL.")
         self.sari_metric = evaluate.load("sari")
         self.bleu_metric = evaluate.load("bleu")
-        self.bertscore_metric = evaluate.load("bertscore")
         print("Evaluation metrics loaded.")
 
     def calc_simplification_metrics(self, complex_text: str, current_simplified_text: str, reference_text: str) -> dict:
         """
-        Calculates SARI, BLEU y BERTScore_F1 metrics to evaluate the current simplified text.
+        Calculates SARI, BLEU and FKGL metrics to evaluate the current simplified text.
         Receives the original text, the current simplified text given by the Plain Language Simplifier agent
         and the reference text.
         """
@@ -39,22 +43,11 @@ class MetricsEvaluator:
         except Exception as e:
             print(f"Error calculating BLEU: {e}")
 
-
-        try:
-            bert_score = self.bertscore_metric.compute(
-                predictions=predictions,
-                references=references,
-                lang="en"
-            )
-        except Exception as e:
-            print(f"Error calculating BERTScore: {e}")
-
         # FKGL
-        fkgl_scores = [textstat.flesch_kincaid_grade(text) for text in predictions]
+        fkgl_scores = [self._textstat.flesch_kincaid_grade(text) for text in predictions]
 
         return {
             "SARI": sari_score['sari'],
             "BLEU": bleu_score['bleu'],
-            "BERTScore_F1": bert_score['f1'][0],
-            "fkgl": np.mean(fkgl_scores)
+            "FKGL": sum(fkgl_scores) / len(fkgl_scores)
         }

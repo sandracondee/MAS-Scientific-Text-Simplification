@@ -82,14 +82,13 @@ def node_judge(state: dict) -> dict:
         )
 
         client = OpenAI(
-            api_key=os.getenv("DEEPSEEK_API_KEY"),
-            base_url="https://api.deepseek.com",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+            base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
         )
         response = client.chat.completions.create(
             model=os.getenv("JUDGE_MODEL"),
             temperature=0.1,
             response_format={"type": "json_object"},
-            extra_body={"thinking": {"type": "disabled"}},
             messages=[
                 {"role": "system", "content": system_prompt_judge_deepseek},
                 {"role": "user", "content": human_prompt_judge.format(

@@ -1,0 +1,44 @@
+# Render Blueprint para Text-Simplification-ISC
+#
+# ÚNICO web service gratuito. Todo el sistema (Streamlit + 2 servidores MCP)
+# corre dentro de un mismo contenedor Docker:
+#   - el Dockerfile define las URLs internas de los MCP (127.0.0.1:8020/8021)
+#   - start_prod.py (CMD del Dockerfile) arranca los MCP y luego Streamlit
+#
+# NOTA sobre el plan free: Render permite 1 único web service gratuito, y este
+# blueprint define exactamente uno.
+#
+# SEGURIDAD:
+#   - NO introduzcas nunca las API keys aquí.
+#   - Configura las API keys desde el dashboard de Render (Environment) o
+#     se pueden definir aquí con `sync: false` (campo vacío que rellenas en UI).
+#   - Los servidores MCP escuchan SOLO en 127.0.0.1 dentro del contenedor:
+#     no quedan expuestos a Internet (a diferencia de desplegarlos como
+#     servicios públicos). Solo Streamlit es accesible desde fuera.
+
+services:
+  - type: web
+    name: text-simplification-app
+    runtime: docker
+    repo: https://github.com/sandracondee/Text-Simplification-ISC
+    plan: free
+    dockerfilePath: Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: STREAMLIT_SERVER_HEADLESS
+        value: "true"
+      - key: STREAMLIT_BROWSER_GATHER_USAGE_STATS
+        value: "false"
+      # URLs internas de los servidores MCP (valores por defecto ya en Dockerfile;
+      # aquí por si necesitas sobrescribirlas desde el dashboard).
+      # MCP_METRICS_SERVER_URL=http://127.0.0.1:8020/mcp/
+      # MCP_SEARCH_SERVER_URL=http://127.0.0.1:8021/mcp/
+      # --- API keys: configurar desde el dashboard de Render (sync: false) ---
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false

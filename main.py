@@ -98,9 +98,9 @@ if __name__ == "__main__":
     llm_provider = os.getenv("LLM_PROVIDER", "").strip().lower()
     using_ollama = llm_provider == "ollama" or (not llm_provider and local_mode)
 
-    if not using_ollama and not os.environ.get("GOOGLE_API_KEY"):
+    if not using_ollama and not os.environ.get("OPENROUTER_API_KEY"):
         raise ValueError(
-            "GOOGLE_API_KEY is missing. Add it to your .env file or use LOCAL_MODE=1/LLM_PROVIDER=ollama for local execution."
+            "OPENROUTER_API_KEY is missing. Add it to your .env file or use LOCAL_MODE=1/LLM_PROVIDER=ollama for local execution."
         )
         
     asyncio.run(main())

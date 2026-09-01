@@ -38,7 +38,7 @@ El sistema implementa un flujo de trabajo multi-agente orquestado mediante **Lan
 4. **Evaluators**: La propuesta seleccionada pasa por dos agentes especializados:
 
    * **Fact Checker**: Comprueba que la simplificación mantiene la información clínica y numérica del texto original, evitando omisiones y contenido no presente en la fuente.
-   * **Readability Evaluator**: Evalúa la claridad, accesibilidad y legibilidad del texto. Cuando existe una simplificación de referencia, puede utilizar las métricas SARI, BLEU, BERTScore y FKGL mediante una herramienta MCP.
+   * **Readability Evaluator**: Evalúa la claridad, accesibilidad y legibilidad del texto. Cuando existe una simplificación de referencia, puede utilizar las métricas SARI, BLEU y FKGL mediante una herramienta MCP.
 
 5. **Editor**: Si alguno de los evaluadores detecta problemas, genera una nueva versión teniendo en cuenta el feedback recibido. Este proceso puede repetirse hasta un máximo de tres iteraciones para evitar bucles infinitos.
 
@@ -63,8 +63,8 @@ Las principales tecnologías utilizadas en el proyecto son:
 * **Pydantic**: definición y validación de las estructuras de salida de los agentes.
 * **MCP / FastMCP**: integración de herramientas externas con los agentes.
 * **Streamlit**: desarrollo de la interfaz web interactiva.
-* **LLMs**: Gemini, Groq/Llama, Mistral y DeepSeek.
-* **Evaluación**: SARI, BLEU, BERTScore y FKGL.
+* **LLMs**: Gemini, Groq (gpt-oss), Mistral y DeepSeek.
+* **Evaluación**: SARI, BLEU y FKGL.
 * **uv**: gestión del entorno y las dependencias del proyecto.
 
 ## Requisitos
@@ -194,6 +194,44 @@ La aplicación estará disponible en:
 ```text
 http://localhost:8501
 ```
+
+## Despliegue en Render
+
+El sistema se compone de tres procesos: la interfaz **Streamlit** y los dos **servidores MCP** (métricas y búsqueda). Para desplegarlo en el **plan gratuito** de Render (que permite un único *web service*), los tres procesos se ejecutan **dentro de un mismo contenedor Docker**:
+
+```
+Render (1 web service, plan free)
+└── Contenedor Docker (python:3.13-slim)
+    ├── start_prod.py  (supervisor, CMD del Dockerfile)
+    │   ├── arranca src.mcp.metrics_server  → 127.0.0.1:8020 (background)
+    │   ├── arranca src.mcp.search_server   → 127.0.0.1:8021 (background)
+    │   ├── espera a que ambos respondan
+    │   └── lanza streamlit run app.py      → $PORT (primer plano)
+```
+
+* Los servidores MCP escuchan **solo en `127.0.0.1` dentro del contenedor**, por lo que **no quedan expuestos a Internet**. Solo la interfaz Streamlit es accesible desde fuera.
+* La configuración la definen el [Dockerfile](Dockerfile) y el [render.yaml](render.yaml) (Blueprint). No hay que configurar URLs públicas adicionales.
+
+### Pasos para desplegar
+
+1. Crea una cuenta en [Render](https://render.com).
+2. Ve a **New → Blueprint** y conecta este repositorio.
+3. Render leerá `render.yaml` y creará 1 *web service* (`text-simplification-app`).
+4. Configura las **API keys** en el dashboard de Render, en *Environment*:
+   `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`.
+   (Gemini y DeepSeek se sirven a través de OpenRouter, por lo que ambos usan `OPENROUTER_API_KEY`.)
+   (También puedes personalizar ahí cualquier variable de modelo del `.env.example`.)
+5. El despliegue tarda varios minutos en el primer *build* (las dependencias incluyen `evaluate`/`textstat`/`sacrebleu`).
+
+### Requisitos previos
+
+* **Python 3.13**: el proyecto exige `>=3.13` (ver `pyproject.toml`), por lo que el despliegue usa una imagen Docker `python:3.13-slim` en lugar del runtime python nativo de Render (que no llega a 3.13).
+
+### Notas sobre recursos (plan free)
+
+* El plan free de Render da **512 MB RAM / 0.5 CPU**. Todo el sistema comparte esa memoria.
+* Para reducir el pico de memoria en el arranque, el servidor de métricas inicializa `MetricsEvaluator` (que carga `evaluate` y descarga modelos) **de forma perezosa**, es decir, solo la primera vez que se solicita una métrica con texto de referencia.
+* Si el plan free se queda corto de RAM con las métricas activas, se puede subir de plan manteniendo el mismo único servicio.
 
 ## Interfaz de la aplicación
 

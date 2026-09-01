@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
 from langchain_core.prompts import ChatPromptTemplate
@@ -10,11 +11,10 @@ import json, re
 from collections import defaultdict
 from rapidfuzz import process, fuzz
 
-import warnings
-warnings.filterwarnings("ignore", message="WARNING! thinking is not default parameter")
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Cargado una vez al importar el módulo
-with open("pl_medical_dictionary/pl_medical_dictionary_processed.json", "r", encoding="utf-8") as f:
+with open(_PROJECT_ROOT / "pl_medical_dictionary" / "pl_medical_dictionary_processed.json", "r", encoding="utf-8") as f:
     _MEDICAL_DICT = json.load(f)
 
 _KEYS_BY_LEN = defaultdict(list)
@@ -101,15 +101,29 @@ Your task is to simplify the following text while strictly adhering to these pro
     PROVIDERS_WITHOUT_STRUCTURED_OUTPUT = {"deepseek", "groq"}
 
     if provider not in PROVIDERS_WITHOUT_STRUCTURED_OUTPUT:
-        llm = build_chat_llm(temperature=0.4, model=model_name, provider=provider)
-        simplifier_agent = llm.with_structured_output(SimplificationResult)
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("human", "{complex_text}")
         ])
-        chain = prompt | simplifier_agent
-        result = chain.invoke({"complex_text": enriched_text})
-        return result.current_simplified_text
+        # Los modelos con structured output (gemini, mistral, ...) pueden
+        # devolver ocasionalmente JSON inválido o truncado. Se reintenta con
+        # temperatura decreciente para aumentar la probabilidad de éxito.
+        last_exc = None
+        for attempt in range(3):
+            try:
+                llm = build_chat_llm(
+                    temperature=max(0.1, 0.4 - attempt * 0.15),  # 0.4 → 0.25 → 0.1
+                    model=model_name,
+                    provider=provider,
+                )
+                simplifier_agent = llm.with_structured_output(SimplificationResult)
+                chain = prompt | simplifier_agent
+                result = chain.invoke({"complex_text": enriched_text})
+                return result.current_simplified_text
+            except Exception as e:
+                last_exc = e
+                print(f"DEBUG attempt {attempt + 1} failed for provider={provider}: {e}")
+        raise last_exc
 
     else:
         from openai import OpenAI
@@ -123,9 +137,9 @@ Your task is to simplify the following text while strictly adhering to these pro
 
         provider_configs = {
             "deepseek": {
-                "api_key": os.getenv("DEEPSEEK_API_KEY"),
-                "base_url": "https://api.deepseek.com",
-                "extra_body": {"thinking": {"type": "disabled"}},
+                "api_key": os.getenv("OPENROUTER_API_KEY"),
+                "base_url": os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+                "extra_body": {},
             },
             "groq": {
                 "api_key": os.getenv("GROQ_API_KEY"),
@@ -171,9 +185,9 @@ def _default_drafter_models() -> dict:
 
     return {
         "A": "gemini-2.5-flash-lite",
-        "B": "llama-3.3-70b-versatile",
+        "B": "openai/gpt-oss-120b",
         "C": "mistral-small-2603",
-        "D": "deepseek-v4-flash",
+        "D": "~deepseek/deepseek-v4-flash-latest",
     }
 
 def _default_drafter_providers() -> dict:

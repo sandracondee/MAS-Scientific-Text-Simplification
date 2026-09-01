@@ -100,18 +100,33 @@ def build_chat_llm(temperature: float = 0.0, model: Optional[str] = None, provid
         return ChatOllama(**kwargs)
 
     if resolved_provider == "gemini":
+        # Gemini se sirve a través de OpenRouter (https://openrouter.ai),
+        # usando la API compatible con OpenAI en lugar de Google AI Studio.
         try:
-            genai_module = importlib.import_module("langchain_google_genai")
-            ChatGoogleGenerativeAI = getattr(genai_module, "ChatGoogleGenerativeAI")
+            openai_module = importlib.import_module("langchain_openai")
+            ChatOpenAI = getattr(openai_module, "ChatOpenAI")
         except ImportError as exc:
             raise ImportError(
-                "`langchain-google-genai` is required for Gemini mode. "
-                "Install it with: pip install langchain-google-genai"
+                "`langchain-openai` is required for Gemini via OpenRouter mode. "
+                "Install it with: pip install langchain-openai"
             ) from exc
 
-        _validate_api_key("Gemini", "GOOGLE_API_KEY")
-        model_name = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
-        return ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
+        _validate_api_key("Gemini (OpenRouter)", "OPENROUTER_API_KEY")
+        api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip()
+
+        model_name = model or os.getenv("GEMINI_MODEL", "google/gemini-2.5-flash-lite")
+        # OpenRouter espera ids tipo "<proveedor>/<modelo>"; si el modelo no
+        # lleva prefijo (p.ej. "gemini-2.5-flash-lite"), se le antepone "google/".
+        if "/" not in model_name:
+            model_name = f"google/{model_name}"
+
+        return ChatOpenAI(
+            model=model_name,
+            temperature=temperature,
+            api_key=api_key,
+            base_url=base_url,
+        )
 
     if resolved_provider == "groq":
         try:
@@ -124,7 +139,7 @@ def build_chat_llm(temperature: float = 0.0, model: Optional[str] = None, provid
             ) from exc
 
         _validate_api_key("Groq", "GROQ_API_KEY")
-        model_name = model or os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        model_name = model or os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
         return ChatGroq(model=model_name, temperature=temperature)
 
     if resolved_provider == "mistral":
@@ -141,45 +156,29 @@ def build_chat_llm(temperature: float = 0.0, model: Optional[str] = None, provid
         model_name = model or os.getenv("MISTRAL_MODEL", "mistral-small-2603")
         return ChatMistralAI(model=model_name, temperature=temperature)
 
-    # if resolved_provider == "deepseek":
-    #     try:
-    #         openai_module = importlib.import_module("langchain_openai")
-    #         ChatOpenAI = getattr(openai_module, "ChatOpenAI")
-    #     except ImportError as exc:
-    #         raise ImportError(
-    #             "`langchain-openai` is required for Deepseek mode. "
-    #             "Install it with: pip install langchain-openai"
-    #         ) from exc
-
-    #     model_name = model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-    #     api_key = _validate_api_key("Deepseek", "DEEPSEEK_API_KEY")
-        
-    #     return ChatOpenAI(
-    #         model=model_name,
-    #         temperature=temperature,
-    #         api_key=api_key,
-    #         base_url="https://api.deepseek.com",
-    #     )
-    
     if resolved_provider == "deepseek":
+        # DeepSeek se sirve a través de OpenRouter (https://openrouter.ai),
+        # usando la API compatible con OpenAI en lugar de la API nativa de DeepSeek.
         try:
-            deepseek_module = importlib.import_module("langchain_deepseek")
-            ChatDeepSeek = getattr(deepseek_module, "ChatDeepSeek")
+            openai_module = importlib.import_module("langchain_openai")
+            ChatOpenAI = getattr(openai_module, "ChatOpenAI")
         except ImportError as exc:
             raise ImportError(
-                "`langchain-deepseek` is required. "
-                "Install it with: pip install langchain-deepseek"
+                "`langchain-openai` is required for DeepSeek via OpenRouter mode. "
+                "Install it with: pip install langchain-openai"
             ) from exc
 
-        model_name = model or os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
-        api_key = _validate_api_key("Deepseek", "DEEPSEEK_API_KEY")
-        
-        return ChatDeepSeek(
+        _validate_api_key("DeepSeek (OpenRouter)", "OPENROUTER_API_KEY")
+        api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip()
+
+        model_name = model or os.getenv("DEEPSEEK_MODEL", "~deepseek/deepseek-v4-flash-latest")
+
+        return ChatOpenAI(
             model=model_name,
             temperature=temperature,
             api_key=api_key,
-            thinking={"type": "disabled"}
-            # No necesitas base_url, el paquete oficial ya la conoce
+            base_url=base_url,
         )
 
     raise ValueError(
