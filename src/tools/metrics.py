@@ -38,7 +38,8 @@ class MetricsEvaluator:
         try:
             bleu_score = self.bleu_metric.compute(
                 predictions=predictions,
-                references=references
+                references=references,
+                smooth=True
             )
         except Exception as e:
             print(f"Error calculating BLEU: {e}")
