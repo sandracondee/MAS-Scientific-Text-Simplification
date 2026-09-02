@@ -9,10 +9,8 @@ dependencies = [
     "evaluate>=0.4.6",
     "mcp>=1.0.0",
     "langchain-core>=1.2.26",
-    "langchain-google-genai>=4.2.1",
     "langchain-groq>=0.1.0",
     "langchain-mistralai>=0.1.0",
-    "langchain-ollama>=0.3.3",
     "langchain-openai>=0.1.0",
     "langgraph>=1.1.6",
     "numpy>=2.4.4",
@@ -24,4 +22,9 @@ dependencies = [
     "langchain>=1.2.17",
     "streamlit>=1.41.0",
     "rapidfuzz>=3.14.5",
+]
+
+[dependency-groups]
+dev = [
+    "langchain-ollama>=0.3.3",
 ]
