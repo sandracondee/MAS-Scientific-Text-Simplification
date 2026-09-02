@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from src.agents.llm_factory import build_chat_llm
 from src.mcp.mcp_manager import mcp_manager
 from src.agents.step_delay import pause_step_async
+from src.utils.llm_helpers import invoke_structured_with_retry_async
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 
@@ -108,9 +109,24 @@ async def node_readability_evaluator(state: dict) -> dict:
             current_simplified_text=state.get("current_simplified_text", "")
         )
 
-        response = await agent.ainvoke({
-            "messages": messages
-        })
+        response = await invoke_structured_with_retry_async(
+            agent,
+            {"messages": messages},
+            node_name="readability_evaluator"
+        )
+
+        # FALLBACK: nodo de validacion/aprobacion — rechazar por defecto.
+        # Si el evaluador de legibilidad falla tecnica, asumir que el texto
+        # NO cumple estandares y forzar re-intento con correcciones del editor.
+        # Nunca aprobar por defecto en un dominio medico.
+        if response is None:
+            print("[readability_evaluator] All retries failed, using fallback: rejecting (not approved).", flush=True)
+            await pause_step_async()
+            return {
+                "readability_evaluator_feedback": "Readability evaluation failed due to technical errors. Please retry.",
+                "is_readability_approved": False, 
+                "current_metrics": {}
+            }
         
         result = response["structured_response"]
         

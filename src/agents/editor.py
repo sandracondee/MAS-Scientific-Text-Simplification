@@ -3,6 +3,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from src.agents.llm_factory import build_chat_llm
 from src.agents.step_delay import pause_step_sync
+from src.utils.llm_helpers import invoke_structured_with_retry
 
 
 class EditorResult(BaseModel):
@@ -45,12 +46,28 @@ def node_editor(state: dict) -> dict:
     ])
 
     editor_chain = prompt_editor | editor_agent
-    result: EditorResult = editor_chain.invoke({
+    result = invoke_structured_with_retry(
+        editor_chain,
+        {
             "current_simplified_text": state["current_simplified_text"],
             "feedback": feedback
-        })
+        },
+        node_name="editor"
+    )
 
     pause_step_sync()
+
+    # FALLBACK: el editor corrige texto basado en feedback del fact-checker y readability.
+    # Si el LLM falla, devolver el texto actual sin cambios para que el loop de auditoria
+    # pueda re-evaluar. Nunca inyectar texto corrupto o inventado.
+    if result is None:
+        print("[editor] All retries failed, using fallback: keeping current text unchanged.", flush=True)
+        return {
+            "current_simplified_text": state["current_simplified_text"],
+            "iteration_count": state["iteration_count"] + 1,
+            "is_fact_approved": False,
+            "is_readability_approved": False
+        }
 
     return {
         "current_simplified_text": result.corrected_text,

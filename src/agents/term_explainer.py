@@ -6,6 +6,7 @@ from typing import List
 from src.agents.llm_factory import build_chat_llm
 from src.mcp.mcp_manager import mcp_manager
 from src.agents.step_delay import pause_step_async
+from src.utils.llm_helpers import invoke_structured_with_retry_async
 
 class Explanation(BaseModel):
     searched_term: str = Field(description="The exact word or phrase extracted from the simplified text.")
@@ -43,7 +44,7 @@ async def node_term_explainer(state: dict) -> dict:
             "3. The tool will return a response like: \"Found as 'Tourette syndrome': When you make unusual movements or sounds. \"\n"
             "4. Fill the 'searched_term' with the word you found in the text, the 'dictionary_term' with the word matched by the tool, and the 'explanation' with the text provided by the tool.\n"
             "5. CRITICAL: DO NOT invent, rewrite or summarize the explanation. You must copy the explanation EXACTLY as the tool returns it.\n"
-            "6. If the tool returns 'Term not found', DO NOT guess. Discard that word and search for another one."
+            "6. If the tool returns 'Term not found', DO NOT guess. Discard that word and search for another one.\n"
             "7. Once you have gathered all explanations, respond ONLY with a valid JSON object matching this exact schema, "
             "with no markdown fences, no preamble, and no extra text:\n"
             '{{"explanations": [{{"searched_term": "...", "dictionary_term": "...", "explanation": "..."}}, {{"searched_term": "...", "dictionary_term": "...", "explanation": "..."}}]}}'
@@ -67,14 +68,26 @@ async def node_term_explainer(state: dict) -> dict:
             current_simplified_text=state["current_simplified_text"]
         )
 
-        response = await agent.ainvoke({"messages": messages})
+        response = await invoke_structured_with_retry_async(
+            agent,
+            {"messages": messages},
+            node_name="term_explainer"
+        )
+
+        # FALLBACK: si el term explainer falla, devolver un diccionario vacio.
+        # No inventar explicaciones de terminos; marcar como no disponibles.
+        if response is None:
+            print("[term_explainer] All retries failed, using fallback: empty term_explanations.", flush=True)
+            await pause_step_async()
+            return {"term_explanations": {}}
+
         final_text = response["messages"][-1].content
 
         import json
         try:
             result = TermExplanainerResult.model_validate_json(final_text)
         except Exception:
-            # fallback: a veces el modelo mete texto extra pese a la instrucción
+            # fallback: a veces el modelo mete texto extra pese a la instruccion
             import re
             match = re.search(r"\{.*\}", final_text, re.DOTALL)
             result = TermExplanainerResult.model_validate_json(match.group(0))

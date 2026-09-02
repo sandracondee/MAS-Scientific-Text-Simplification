@@ -4,6 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from src.agents.llm_factory import build_chat_llm
 from src.agents.step_delay import pause_step_sync
+from src.utils.llm_helpers import invoke_structured_with_retry
 from typing import Literal
 
 class JudgeResult(BaseModel):
@@ -15,13 +16,13 @@ def node_judge(state: dict) -> dict:
     drafts = state.get("drafts", {})
     provider = os.getenv("JUDGE_PROVIDER") or None
 
-    # ── Aleatorizar orden de presentación para evitar position bias ──────
+    # -- Aleatorizar orden de presentacion para evitar position bias ----------
     import random
     real_letters = list(drafts.keys())
     random.shuffle(real_letters)
     display_labels = ["A", "B", "C", "D"][:len(real_letters)]
     display_to_real = dict(zip(display_labels, real_letters))
-    # ────────────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------------------
 
     system_prompt_judge = (
         "You are an expert Style Judge specialized in Medical Plain Language. "
@@ -61,14 +62,27 @@ def node_judge(state: dict) -> dict:
             ("human", human_prompt_judge)
         ])
         chain = prompt_judge | judge_agent
-        result = chain.invoke({
-            "draft_A": drafts.get(display_to_real["A"], ""),
-            "draft_B": drafts.get(display_to_real["B"], ""),
-            "draft_C": drafts.get(display_to_real["C"], ""),
-            "draft_D": drafts.get(display_to_real["D"], ""),
-        })
-        winner_display = result.winner
-        rationale = result.rationale
+        result = invoke_structured_with_retry(
+            chain,
+            {
+                "draft_A": drafts.get(display_to_real["A"], ""),
+                "draft_B": drafts.get(display_to_real["B"], ""),
+                "draft_C": drafts.get(display_to_real["C"], ""),
+                "draft_D": drafts.get(display_to_real["D"], ""),
+            },
+            node_name="judge"
+        )
+
+        # FALLBACK: si el juez falla, seleccionar el primer draft disponible.
+        # El juez es un nodo de seleccion, no de aprobacion/rechazo. Si falla,
+        # el grafo debe continuar con algun draft para que los audidores lo evaluen.
+        if result is None:
+            print("[judge] All retries failed, using fallback: selecting first available draft.", flush=True)
+            winner_display = display_labels[0]
+            rationale = "Judge evaluation failed due to technical issues. Using first available draft as fallback."
+        else:
+            winner_display = result.winner
+            rationale = result.rationale
 
     else:
         from openai import OpenAI
@@ -103,10 +117,10 @@ def node_judge(state: dict) -> dict:
         winner_display = parsed["winner"]
         rationale = parsed["rationale"]
 
-    # ── Revertir display label -> letra real del draft ───────────────────
+    # -- Revertir display label -> letra real del draft -------------------------
     winner_letter = display_to_real[winner_display]
     print(f"Winner display: {winner_display} -> real draft: {winner_letter}")
-    # ────────────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------------------
 
     state["judge_rationale"] = rationale
     state["selected_draft_letter"] = winner_letter

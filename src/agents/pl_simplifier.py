@@ -10,6 +10,7 @@ from src.agents.step_delay import pause_step_sync
 import json, re
 from collections import defaultdict
 from rapidfuzz import process, fuzz
+from src.utils.llm_helpers import invoke_structured_with_retry
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -105,20 +106,32 @@ Your task is to simplify the following text while strictly adhering to these pro
             ("system", system_prompt),
             ("human", "{complex_text}")
         ])
-        # Los modelos con structured output (gemini, mistral, ...) pueden
-        # devolver ocasionalmente JSON inválido o truncado. Se reintenta con
-        # temperatura decreciente para aumentar la probabilidad de éxito.
+
+        # Agregar import al inicio del archivo:
+        # from src.utils.llm_helpers import invoke_structured_with_retry
         last_exc = None
         for attempt in range(3):
             try:
                 llm = build_chat_llm(
-                    temperature=max(0.1, 0.4 - attempt * 0.15),  # 0.4 → 0.25 → 0.1
+                    temperature=max(0.1, 0.4 - attempt * 0.15),  # 0.4 -> 0.25 -> 0.1
                     model=model_name,
                     provider=provider,
                 )
                 simplifier_agent = llm.with_structured_output(SimplificationResult)
                 chain = prompt | simplifier_agent
-                result = chain.invoke({"complex_text": enriched_text})
+                result = invoke_structured_with_retry(
+                    chain,
+                    {"complex_text": enriched_text},
+                    max_retries=3,
+                    node_name=f"drafter_{model_name}"
+                )
+                if result is None:
+                    # FALLBACK: si todos los reintentos del helper fallan,
+                    # intentar una vez mas con el proximo set de parametros (bucle externo).
+                    # Si el bucle externo tambien falla, raise para que
+                    # node_parallel_drafters maneje la excepcion del drafter individual.
+                    last_exc = RuntimeError(f"All retries failed for drafter model={model_name}")
+                    continue
                 return result.current_simplified_text
             except Exception as e:
                 last_exc = e

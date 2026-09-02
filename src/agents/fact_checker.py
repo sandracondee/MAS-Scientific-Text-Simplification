@@ -4,6 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from src.agents.llm_factory import build_chat_llm
 from src.agents.step_delay import pause_step_sync
+from src.utils.llm_helpers import invoke_structured_with_retry
 
 class FactCheckResult(BaseModel):
     analysis: str = Field(description="Step-by-step comparison of all numerical data, clinical findings, and core facts between the original and the simplified text.")
@@ -46,13 +47,29 @@ def node_fact_checker(state: dict) -> dict:
     
     chain = prompt_fact_checker | fact_checker_agent
     
-    result = chain.invoke({
-        "complex_text": state["complex_text"],
-        "current_simplified_text": state["current_simplified_text"]
-    })
+    result = invoke_structured_with_retry(
+        chain,
+        {
+            "complex_text": state["complex_text"],
+            "current_simplified_text": state["current_simplified_text"]
+        },
+        node_name="fact_checker"
+    )
     
     pause_step_sync()
     
+    # FALLBACK: dominio medico — NUNCA aprobar contenido no verificado.
+    # Si el fact-checker falla, rechazar por defecto para forzar re-intento
+    # con correcciones del editor. Aprobar por defecto pondria en riesgo
+    # la precision clinica del texto simplificado.
+    if result is None:
+        print("[fact_checker] All retries failed, using fallback: rejecting (not approved).", flush=True)
+        return {
+            "fact_checker_rationale": "Fact-checking failed due to technical issues. Defaulting to rejection.",
+            "fact_checker_feedback": "Fact checking could not be completed due to technical errors. Please retry.",
+            "is_fact_approved": False,
+        }
+
     return {
         "fact_checker_rationale": result.analysis,
         "fact_checker_feedback": result.feedback,

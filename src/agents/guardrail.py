@@ -5,6 +5,7 @@ from langchain_core.prompts import ChatPromptTemplate
 # Asumiendo que estos imports corresponden a tu estructura de proyecto
 from src.agents.llm_factory import build_chat_llm
 from src.agents.step_delay import pause_step_sync
+from src.utils.llm_helpers import invoke_structured_with_retry
 
 class GuardrailResult(BaseModel):
     is_in_scope: bool = Field(
@@ -54,9 +55,17 @@ def node_guardrail(state: dict) -> dict:
 
     chain = prompt_guardrail | guardrail_agent
 
-    try:
-        result: GuardrailResult = chain.invoke({"complex_text": state["complex_text"]})
-    except Exception as exc:
+    result = invoke_structured_with_retry(
+        chain,
+        {"complex_text": state["complex_text"]},
+        node_name="guardrail"
+    )
+
+    # FALLBACK: rechazar por defecto (guardrail_triggered=True).
+    # Si el guardrail falla, es mas seguro bloquear el input que dejar
+    # pasar contenido que podria no ser medico/cientifico.
+    if result is None:
+        print("[guardrail] All retries failed, using fallback: triggering guardrail (rejecting input).", flush=True)
         pause_step_sync()
         return {
             "guardrail_triggered": True
