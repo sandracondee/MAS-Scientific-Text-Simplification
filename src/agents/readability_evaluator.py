@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from src.agents.llm_factory import build_chat_llm
 from src.mcp.mcp_manager import mcp_manager
 from src.agents.step_delay import pause_step_async
-from src.utils.llm_helpers import invoke_structured_with_retry_async
+from src.utils.llm_helpers import invoke_structured_with_retry_async, clean_llm_text
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 
@@ -133,7 +133,7 @@ async def node_readability_evaluator(state: dict) -> dict:
         await pause_step_async()
 
         return {
-            "readability_evaluator_feedback": result.feedback,
+            "readability_evaluator_feedback": clean_llm_text(result.feedback),
             "is_readability_approved": result.is_readability_approved, 
             "current_metrics": result.metrics_report.model_dump() if has_reference else {}
         }

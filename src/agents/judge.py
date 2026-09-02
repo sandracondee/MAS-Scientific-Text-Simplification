@@ -4,7 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from src.agents.llm_factory import build_chat_llm
 from src.agents.step_delay import pause_step_sync
-from src.utils.llm_helpers import invoke_structured_with_retry
+from src.utils.llm_helpers import invoke_structured_with_retry, clean_llm_text
 from typing import Literal
 
 class JudgeResult(BaseModel):
@@ -129,7 +129,7 @@ def node_judge(state: dict) -> dict:
     pause_step_sync()
 
     return {
-        "judge_rationale": rationale,
+        "judge_rationale": clean_llm_text(rationale),
         "selected_draft_letter": winner_letter,
         "current_simplified_text": state["current_simplified_text"],
     }

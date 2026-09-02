@@ -3,7 +3,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from src.agents.llm_factory import build_chat_llm
 from src.agents.step_delay import pause_step_sync
-from src.utils.llm_helpers import invoke_structured_with_retry
+from src.utils.llm_helpers import invoke_structured_with_retry, clean_llm_text
 
 
 class EditorResult(BaseModel):
@@ -70,7 +70,7 @@ def node_editor(state: dict) -> dict:
         }
 
     return {
-        "current_simplified_text": result.corrected_text,
+        "current_simplified_text": clean_llm_text(result.corrected_text),
         "iteration_count": state["iteration_count"] + 1,
         "is_fact_approved": False,
         "is_readability_approved": False

@@ -4,7 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from src.agents.llm_factory import build_chat_llm
 from src.agents.step_delay import pause_step_sync
-from src.utils.llm_helpers import invoke_structured_with_retry
+from src.utils.llm_helpers import invoke_structured_with_retry, clean_llm_text
 
 class FactCheckResult(BaseModel):
     analysis: str = Field(description="Step-by-step comparison of all numerical data, clinical findings, and core facts between the original and the simplified text.")
@@ -71,7 +71,7 @@ def node_fact_checker(state: dict) -> dict:
         }
 
     return {
-        "fact_checker_rationale": result.analysis,
-        "fact_checker_feedback": result.feedback,
+        "fact_checker_rationale": clean_llm_text(result.analysis),
+        "fact_checker_feedback": clean_llm_text(result.feedback),
         "is_fact_approved": result.is_fact_approved, 
     }

@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
-from src.agents.llm_factory import build_chat_llm
+from src.agents.llm_factory import build_chat_llm, clean_llm_text
 from src.agents.step_delay import pause_step_sync
 
 import json, re
@@ -273,7 +273,7 @@ def node_parallel_drafters(state: dict) -> dict:
 
         for letter, future in futures.items():
             try:
-                drafts[letter] = future.result().strip()
+                drafts[letter] = clean_llm_text(future.result().strip())
             except Exception as exc:
                 raise exc
                 # drafts[letter] = (

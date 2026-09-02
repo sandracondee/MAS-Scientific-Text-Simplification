@@ -1,6 +1,6 @@
 import asyncio
 import time
-
+import html
 
 def invoke_structured_with_retry(chain, inputs: dict, max_retries: int = 3, node_name: str = "unknown"):
     """
@@ -32,3 +32,9 @@ async def invoke_structured_with_retry_async(chain, inputs: dict, max_retries: i
             if attempt < max_retries:
                 await asyncio.sleep(1.5 * attempt)
     return None
+
+def clean_llm_text(text: str) -> str:
+    """Limpia entidades HTML que algunos LLMs generan espontáneamente en texto libre."""
+    if not text:
+        return text
+    return html.unescape(text)
